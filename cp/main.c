@@ -78,6 +78,11 @@
 #ifdef ZMQ_COMM
 #define OP_ID_HASH_SIZE     (1 << 18)
 
+
+
+
+static struct timespec prev_pkt_t;  // mipe
+
 struct rte_hash *resp_op_id_hash;
 
 #endif  /* ZMQ_COMM */
@@ -571,6 +576,10 @@ control_plane(void)
 	static uint8_t s5s8_sgwc_msgcnt = 0;
 	static uint8_t s5s8_pgwc_msgcnt = 0;
 	int ret = 0;
+        /* mipe */
+        struct timespec pkt0_t, pkt_t;
+        uint64_t delta_us, delta_pkt_us;
+        /* mipe */
 
 	if (pcap_reader) {
 		static struct pcap_pkthdr *pcap_rx_header;
@@ -619,10 +628,18 @@ control_plane(void)
 		}
 	}
 	if ((spgw_cfg == SGWC) || (spgw_cfg == SPGWC)) {
+                        /* mipe */
+                        clock_gettime(CLOCK_MONOTONIC_RAW, &pkt0_t);
+                        /* mipe */
 			bytes_s11_rx = recvfrom(s11_fd, s11_rx_buf,
 					MAX_GTPV2C_UDP_LEN, MSG_DONTWAIT,
 					(struct sockaddr *) &s11_mme_sockaddr,
 					&s11_mme_sockaddr_len);
+                        /* mipe */
+                        clock_gettime(CLOCK_MONOTONIC_RAW, &pkt_t);
+                        delta_us = (pkt_t.tv_sec - pkt0_t.tv_sec) * 1000000 + (pkt_t.tv_nsec - pkt0_t.tv_nsec) / 1000;
+                        /* mipe */
+
 		if (bytes_s11_rx == 0) {
 			fprintf(stderr, "SGWC|SPGWC_s11 recvfrom error:"
 					"\n\ton %s:%u - %s\n",
@@ -681,8 +698,18 @@ control_plane(void)
 		}
 	}
 
-	if ((bytes_s5s8_rx > 0) || (bytes_s11_rx > 0))
+	if ((bytes_s5s8_rx > 0) || (bytes_s11_rx > 0)) {
 		++cp_stats.rx;
+                /* mipe */
+                delta_pkt_us = (pkt_t.tv_sec - prev_pkt_t.tv_sec) * 1000000 + (pkt_t.tv_nsec - prev_pkt_t.tv_nsec) / 1000;
+		fprintf(stderr, "Packet %ld %ld %ld %ld %ld %ld %ld\n",
+                        cp_stats.rx,
+                        pkt_t.tv_sec, pkt_t.tv_nsec, prev_pkt_t.tv_sec, prev_pkt_t.tv_nsec,
+                        delta_us, delta_pkt_us);
+                prev_pkt_t = pkt_t;
+                memcpy(&prev_pkt_t, &pkt_t, sizeof(pkt_t));
+                /* mipe */
+        }
 
 	if (!pcap_reader) {
 			if (
